@@ -1,49 +1,88 @@
-import { getCustomRepository, getRepository } from 'typeorm';
 import AppError from '../errors/AppError';
-import Category from '../models/Category';
-import TransactionsRepository from '../repositories/TransactionsRepository';
 
 import Transaction from '../models/Transaction';
+import Category from '../models/Category';
+
+
+import { getRepository, getCustomRepository } from 'typeorm';
 
 interface Request {
-  title: string;
-  value: number;
-  type: 'income' | 'outcome';
-  category: string;
+  title: string,
+  value: number,
+  type: 'income' | 'outcome',
+  category: string
 }
-class CreateTransactionService {
-  public async execute({
-    title,
-    value,
-    type,
-    category,
-  }: Request): Promise<Transaction> {
-    const categoryRepository = getRepository(Category);
-    const transactionRepository = getCustomRepository(TransactionsRepository);
 
-    const balance = await transactionRepository.getBalance();
-    if (type === 'outcome' && balance.total - value < 0) {
-      throw new AppError(
-        "You don't have enought balance to execute this transaction!",
-        400,
-      );
+interface Balance {
+  income: number;
+  outcome: number;
+  total: number;
+}
+
+class CreateTransactionService {
+  public async execute({ title, value, type, category }: Request): Promise<Transaction> {
+
+    const transactionRepository = getRepository(Transaction);
+    const categoryRepository = getRepository(Category);
+
+    const Alltransactions = await transactionRepository.find();
+
+    const { income, outcome } = Alltransactions.reduce(
+      (accumulator: Balance, transactions: Transaction) => {
+      switch (transactions.type) {
+        case "income":
+          accumulator.income += Number(transactions.value);
+        break;
+        case "outcome":
+          accumulator.outcome += Number(transactions.value);
+        break;
+        default:
+          break;
+      }
+
+      return accumulator;
+    }, {
+      income: 0,
+      outcome: 0,
+      total: 0
+    })
+
+    const total = income - outcome;
+
+    if( value > total && type === 'outcome'){
+      throw new AppError('Você não possui saldo suficiente', 400);
     }
 
-    let newCategory = await categoryRepository.findOne({
-      title: category,
+
+    // let transactionCategory = await categoryRepository.findOne({
+    //   where: {
+    //     title: category
+    //   }
+    // })
+
+    let checkCategoryExists = await categoryRepository.findOne({
+      where: { title: category }
     });
 
-    if (!newCategory) {
-      newCategory = categoryRepository.create({ title: category });
-      await categoryRepository.save(newCategory);
+    if(!checkCategoryExists){
+      /* se não existir essa categoria ele cria */
+      checkCategoryExists = categoryRepository.create({
+        title: category
+      })
+
+      await categoryRepository.save(checkCategoryExists);
     }
+
+    // const CategoryExist = await categoryRepository.findOne({
+    //   where: { title: category }
+    // })
 
     const transaction = transactionRepository.create({
       title,
       value,
       type,
-      category: newCategory,
-    });
+      category: checkCategoryExists
+    })
 
     await transactionRepository.save(transaction);
 

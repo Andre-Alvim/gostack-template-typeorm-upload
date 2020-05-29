@@ -1,4 +1,4 @@
-import { EntityRepository, Repository } from 'typeorm';
+import { EntityRepository, Repository, getRepository } from 'typeorm';
 
 import Transaction from '../models/Transaction';
 
@@ -11,25 +11,33 @@ interface Balance {
 @EntityRepository(Transaction)
 class TransactionsRepository extends Repository<Transaction> {
   public async getBalance(): Promise<Balance> {
+
     const transactions = await this.find();
-    const result: Balance = transactions.reduce(
-      (balance, transaction) => {
-        if (transaction.type === 'income') {
-          return {
-            ...balance,
-            income: balance.income + transaction.value,
-            total: balance.total + transaction.value,
-          };
-        }
-        return {
-          ...balance,
-          outcome: balance.outcome + transaction.value,
-          total: balance.total - transaction.value,
-        };
-      },
-      { income: 0, outcome: 0, total: 0 },
-    );
-    return result;
+
+    const { income, outcome } = transactions.reduce(
+      (accumulator: Balance, transactions: Transaction) => {
+      switch (transactions.type) {
+        case "income":
+          accumulator.income += Number(transactions.value);
+        break;
+        case "outcome":
+          accumulator.outcome += Number(transactions.value);
+        break;
+        default:
+          break;
+      }
+
+      return accumulator;
+    }, {
+      income: 0,
+      outcome: 0,
+      total: 0
+    })
+
+    const total = income - outcome;
+    const balance = { income, outcome, total };
+
+    return balance;
   }
 }
 
